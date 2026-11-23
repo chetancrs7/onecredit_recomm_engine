@@ -1,11 +1,57 @@
 [project]
 name = "company-recommendation-system"
-version = "0.0.0"
+version = "0.1.0"
 description = "Turn a company event feed into a similar-companies service with RabbitMQ and pgvector."
+readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [
-  "aio-pika",
+  "aio-pika",  # used by the provided producer (producer/publish.py)
+  "pika",
+  "psycopg[binary]",
+  "psycopg-pool",
+  "pgvector",
+  "fastembed",
+  "fastapi",
+  "uvicorn[standard]",
+  "pydantic>=2",
+  "pydantic-settings",
+  "structlog",
+  "prometheus-client",
 ]
 
-[tool.uv]
-package = false
+[dependency-groups]
+dev = [
+  "pytest",
+  "testcontainers[postgres,rabbitmq]",
+  "httpx",
+  "ruff",
+  "pyright",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "company_recs"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Provided by the assessment; left as-is.
+"producer/*" = ["E501"]
+
+[tool.pyright]
+include = ["src", "tests", "producer"]
+strict = ["src"]
+pythonVersion = "3.14"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
