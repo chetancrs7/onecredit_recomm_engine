@@ -1,10 +1,12 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
+set windows-shell := ["C:/Program Files/Git/bin/bash.exe", "-euo", "pipefail", "-c"]
 
 default: setup
 
 # Install the producer's dependencies.
 setup:
     uv sync --locked
+    if [ -f .pre-commit-config.yaml ]; then uv run --with pre-commit pre-commit install; fi
 
 # Start Postgres (with pgvector) and RabbitMQ, and wait until both are healthy.
 up:
@@ -17,3 +19,22 @@ down:
 # Replay the registry feed onto the company-events queue.
 publish:
     uv run python -m producer.publish
+
+# To be used later
+migrate:
+    @echo "not implemented"
+
+consumer:
+    @echo "not implemented"
+
+api:
+    @echo "not implemented"
+
+test:
+    @echo "not implemented"
+
+lint:
+    @echo "not implemented"
+
+eval:
+    @echo "not implemented"
