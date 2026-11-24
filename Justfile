@@ -24,10 +24,11 @@ publish:
 migrate:
     uv run python -m company_recs.db
 
-# To be used later
+# Consume company-events into Postgres until Ctrl+C (migrates first; metrics on :9101).
 consumer:
-    @echo "not implemented"
+    uv run python -m company_recs.consumer
 
+# To be used later
 api:
     @echo "not implemented"
 

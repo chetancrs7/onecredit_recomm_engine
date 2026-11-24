@@ -45,6 +45,8 @@ def get_pool() -> ConnectionPool[Connection]:
                 max_size=10,
                 kwargs={"connect_timeout": _CONNECT_TIMEOUT_S},
                 configure=_configure,
+                check=ConnectionPool.check_connection,
+                timeout=_CONNECT_TIMEOUT_S,
                 open=True,
             )
         return _pool

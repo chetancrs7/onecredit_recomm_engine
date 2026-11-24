@@ -1,35 +1,13 @@
 """Integration tests for the database layer, against a real pgvector Postgres in Docker."""
 
-from collections.abc import Iterator
 from pathlib import Path
 
 import psycopg
 import pytest
-from testcontainers.community.postgres import PostgresContainer
 
 from company_recs import db
-from company_recs.config import get_settings
 
 pytestmark = pytest.mark.integration
-
-PGVECTOR_IMAGE = "pgvector/pgvector:0.8.7-pg16"
-
-
-@pytest.fixture(scope="module")
-def database_url() -> Iterator[str]:
-    with PostgresContainer(PGVECTOR_IMAGE, driver=None) as postgres:
-        yield postgres.get_connection_url()
-
-
-@pytest.fixture
-def migrated(database_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
-    """A migrated database, with Settings and the pool pointed at it."""
-    db.run_migrations(database_url)
-    monkeypatch.setenv("DATABASE_URL", database_url)
-    get_settings.cache_clear()
-    yield database_url
-    db.close_pool()
-    get_settings.cache_clear()
 
 
 def test_migrations_are_idempotent(database_url: str) -> None:
@@ -53,8 +31,17 @@ def test_migrations_create_tables_and_indexes(migrated: str) -> None:
         }
         applied = c.execute("SELECT name FROM schema_migrations").fetchall()
     assert {"companies", "processed_messages", "company_events", "schema_migrations"} <= tables
-    assert {"companies_embedding_hnsw", "companies_category_state_idx"} <= indexes
-    assert ("001_init.sql",) in applied
+    assert {
+        "companies_embedding_hnsw",
+        "companies_category_state_idx",
+        "companies_description_hash_idx",
+    } <= indexes
+    assert {"pending_strike_offs"} <= tables
+    assert {
+        ("001_init.sql",),
+        ("002_description_hash_idx.sql",),
+        ("003_pending_strike_offs.sql",),
+    } <= set(applied)
 
 
 def test_new_migration_files_are_applied_once(database_url: str, tmp_path: Path) -> None:

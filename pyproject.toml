@@ -57,6 +57,10 @@ venv = ".venv"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-  "integration: needs Docker (starts Postgres with testcontainers)",
+  "integration: needs Docker (starts Postgres, and RabbitMQ for one test, with testcontainers)",
   "model: loads the embedding model (downloaded on first run, about 70 MB)",
+]
+filterwarnings = [
+  "ignore:BlockingConnection is deprecated:DeprecationWarning",
+  "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning",
 ]
