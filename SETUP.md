@@ -19,10 +19,11 @@ After installing a tool, open a new PowerShell window so it picks up the new `PA
 just setup                      # install dependencies from uv.lock
 Copy-Item .env.example .env     # optional: local settings (the defaults already match docker-compose)
 just up                         # start Postgres + RabbitMQ (Docker Desktop must be running)
+just migrate                    # create the schema (safe to re-run)
 just publish                    # put the registry feed on the queue
 ```
 
-- Postgres: `postgresql://postgres:postgres@localhost:5432/companies`
+- Postgres: `postgresql://postgres:postgres@127.0.0.1:5432/companies`
 - RabbitMQ UI: <http://localhost:15672> (`guest` / `guest`)
 
 To start again from empty: `just down`, then `just up`.
@@ -32,7 +33,8 @@ To start again from empty: `just down`, then `just up`.
 ```powershell
 uv run ruff check .
 uv run pyright
-uv run pytest -q
+uv run pytest -q                # Docker must be running: integration tests start their own Postgres
+uv run pytest -q -m "not integration"   # unit tests only, no Docker needed
 ```
 
 ## Settings
@@ -41,8 +43,8 @@ Read from environment variables or `.env` (see `src/company_recs/config.py`):
 
 | Variable | Default |
 |---|---|
-| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/companies` |
-| `RABBITMQ_URL` | `amqp://guest:guest@localhost:5672/` |
+| `DATABASE_URL` | `postgresql://postgres:postgres@127.0.0.1:5432/companies` |
+| `RABBITMQ_URL` | `amqp://guest:guest@127.0.0.1:5672/` |
 | `EMBED_MODEL` | `BAAI/bge-small-en-v1.5` |
 | `TOP_K` | `4` |
 | `LOG_LEVEL` | `INFO` |
@@ -57,3 +59,8 @@ If a port is taken, set `POSTGRES_PORT`, `RABBITMQ_PORT` or `RABBITMQ_UI_PORT` b
   somewhere else, change that path.
 - **`python` opens the Microsoft Store**: Python isn't on `PATH`. Use `uv run python ...` instead.
 - **`just` not found right after installing**: open a new terminal.
+- **Database connections take ages with `localhost`**: `localhost` tries IPv6 (`::1`) first, Docker only listens on
+  `127.0.0.1`, and Windows silently drops the IPv6 attempt. Use `127.0.0.1` in `DATABASE_URL` / `RABBITMQ_URL`
+  (the defaults already do).
+- **`failed to connect to the docker API`**: Docker Desktop isn't running yet. Start it and wait until it says
+  the engine is running.
