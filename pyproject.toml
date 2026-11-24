@@ -17,6 +17,7 @@ dependencies = [
   "pydantic-settings",
   "structlog",
   "prometheus-client",
+  "numpy",
 ]
 
 [dependency-groups]
@@ -55,4 +56,7 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["integration: needs Docker (starts Postgres with testcontainers)"]
+markers = [
+  "integration: needs Docker (starts Postgres with testcontainers)",
+  "model: loads the embedding model (downloaded on first run, about 70 MB)",
+]
