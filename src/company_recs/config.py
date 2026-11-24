@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     embed_model: str = "BAAI/bge-small-en-v1.5"
     top_k: int = Field(default=4, ge=1, le=50)
     log_level: LogLevel = "INFO"
+    consumer_metrics_port: int = Field(default=9101, ge=1, le=65535)
 
 
 @lru_cache(maxsize=1)
