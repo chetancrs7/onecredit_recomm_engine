@@ -15,6 +15,6 @@ recommended to each other. How each layer handles a missing category:
 |---|---|---|
 | Schema | `companies.category` is `text`, nullable. | Done (`feat/schema-and-db`) |
 | Consumer | A message without a category never clears one we already have: `category = COALESCE(EXCLUDED.category, companies.category)`. A new company with no category is stored with `category = NULL`. | Planned (`feat/consumer`) |
-| Embedding | With no description, embed `name \| category \| state`; with no category either, `name \| state`. Never embed the text `"None"`. | Planned (`feat/consumer`) |
+| Embedding | With no description, embed `name \| category \| state`; with no category either, `name \| state`. Never embed the text `"None"`. | Done (`feat/embedder`, `build_embed_text`) |
 | API | Return `"category": null` and let the portal decide how to show it. | Planned (`feat/api`) |
 | Evaluation | Companies with no category are left out of the category-match ground truth, and the eval table reports `N` so the exclusion is visible. | Planned (`feat/eval`) |
