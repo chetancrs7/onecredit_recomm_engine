@@ -14,9 +14,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Defaults match docker-compose.yml so local development works without a .env file.
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/companies"
-    rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
+    database_url: str = "postgresql://postgres:postgres@127.0.0.1:5432/companies"
+    rabbitmq_url: str = "amqp://guest:guest@127.0.0.1:5672/"
     embed_model: str = "BAAI/bge-small-en-v1.5"
     top_k: int = Field(default=4, ge=1, le=50)
     log_level: LogLevel = "INFO"

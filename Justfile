@@ -20,10 +20,11 @@ down:
 publish:
     uv run python -m producer.publish
 
-# To be used later
+# Create or update the database schema (safe to re-run).
 migrate:
-    @echo "not implemented"
+    uv run python -m company_recs.db
 
+# To be used later
 consumer:
     @echo "not implemented"
 
