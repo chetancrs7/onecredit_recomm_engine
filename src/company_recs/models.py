@@ -26,6 +26,11 @@ EVENT_TYPES: Final = frozenset({EVENT_UPSERTED, EVENT_STRUCK_OFF})
 _ENVELOPE_KEYS: Final = frozenset({"type", "registrationNumber", "data"})
 
 
+def normalise_company_id(value: str) -> str:
+    """Return a registration number as stored: all whitespace removed, upper case."""
+    return "".join(value.split()).upper()
+
+
 class CompanyEvent(BaseModel):
     """One change to one company, as the consumer applies it.
 
@@ -76,7 +81,7 @@ class CompanyEvent(BaseModel):
     def _normalise_id(cls, value: Any) -> Any:
         if not isinstance(value, str):
             raise ValueError(f"registration number must be a string, got {type(value).__name__}")
-        normalised = "".join(value.split()).upper()
+        normalised = normalise_company_id(value)
         if not normalised:
             raise ValueError("registration number is empty")
         return normalised
