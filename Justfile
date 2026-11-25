@@ -32,10 +32,15 @@ consumer:
 api:
     uv run python -m company_recs.api
 
-# To be used later
+# Run every test (Docker must be running for the integration tests).
 test:
-    @echo "not implemented"
+    uv run pytest -q
 
+# Run only the chaos tests: duplicates, reordering, poison messages and database outages.
+test-chaos:
+    uv run pytest -q -m chaos
+
+# To be used later
 lint:
     @echo "not implemented"
 

@@ -1,7 +1,12 @@
-"""The real feed under at-least-once delivery: duplicates, redeliveries and reordering.
+"""Chaos: the consumer under at-least-once delivery and failures.
 
-Every test replays `data/feed.jsonl` (2,518 messages, 2,000 companies) through the consumer's
-message handler, against a real Postgres, with the fake embedder.
+Two kinds of test, all against a real Postgres with the fake embedder:
+
+- The real feed, `data/feed.jsonl` (2,518 messages, 2,000 companies), replayed through the
+  message handler in order, reversed, shuffled and with redeliveries.
+- Faults through a real RabbitMQ with the consumer running in a background thread: the same feed
+  published twice, updates out of order, a malformed message, no AMQP message_id, and the
+  database failing while messages are waiting.
 """
 
 import random
@@ -9,13 +14,30 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+import psycopg
 import pytest
-from support import Deliverer, FakeChannel, upsert
+from prometheus_client import REGISTRY
+from support import (
+    Database,
+    Deliverer,
+    FakeChannel,
+    FakeEmbedder,
+    RecordingConsumer,
+    company_version,
+    dead_letters,
+    message_id_of,
+    publish,
+    queue_depth,
+    running,
+    synthetic_feed,
+    upsert,
+)
 
-from company_recs import db
+from company_recs import db as database
+from company_recs.config import Settings
 from company_recs.consumer import DEAD_LETTER_QUEUE, Status
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.chaos]
 
 FEED = Path(__file__).resolve().parents[1] / "data" / "feed.jsonl"
 FEED_LINES = FEED.read_bytes().splitlines()
@@ -29,7 +51,7 @@ def _replay(deliver: Deliverer, lines: list[bytes]) -> Counter[Status]:
 
 def _outcome() -> list[tuple[Any, ...]]:
     """What a reader of `companies` sees, minus fields that depend on arrival order."""
-    with db.conn() as connection:
+    with database.conn() as connection:
         return connection.execute(
             """
             SELECT id, name, is_active, source_updated_at, source_message_id,
@@ -40,7 +62,7 @@ def _outcome() -> list[tuple[Any, ...]]:
 
 
 def _reset() -> None:
-    with db.conn() as connection:
+    with database.conn() as connection:
         connection.execute(
             "TRUNCATE companies, processed_messages, company_events, pending_strike_offs"
         )
@@ -60,7 +82,7 @@ def _in_order_outcome(deliver: Deliverer) -> list[tuple[Any, ...]]:
 
 def test_missing_category_new_company_inserts_null(deliver: Deliverer) -> None:
     deliver(upsert(industry=None))
-    with db.conn() as connection:
+    with database.conn() as connection:
         row = connection.execute(
             "SELECT category, embedding IS NOT NULL FROM companies WHERE id = 'SYN-000001'"
         ).fetchone()
@@ -70,7 +92,7 @@ def test_missing_category_new_company_inserts_null(deliver: Deliverer) -> None:
 def test_missing_category_existing_company_keeps_previous(deliver: Deliverer) -> None:
     deliver(upsert(updated_at="2026-08-14T09:00:00+08:00", industry="Food & Beverage"))
     deliver(upsert(updated_at="2026-08-14T10:00:00+08:00", industry=None, companyName="New Name"))
-    with db.conn() as connection:
+    with database.conn() as connection:
         row = connection.execute(
             "SELECT name, category FROM companies WHERE id = 'SYN-000001'"
         ).fetchone()
@@ -115,3 +137,98 @@ def test_shuffled_feed_with_redeliveries_matches_in_order(deliver: Deliverer) ->
     _replay(deliver, lines)
 
     assert _outcome() == in_order
+
+
+def _consumer(db: Database, url: str) -> RecordingConsumer:
+    return RecordingConsumer(Settings(database_url=db.url, rabbitmq_url=url), embed=FakeEmbedder())
+
+
+def _database_errors() -> float:
+    return REGISTRY.get_sample_value("consumer_errors_total", {"type": "database"}) or 0.0
+
+
+def test_duplicate_publish_is_idempotent(db: Database, queues: str) -> None:
+    feed = synthetic_feed()
+    consumer = _consumer(db, queues)
+    with running(consumer):
+        publish(queues, feed.bodies)
+        consumer.wait_for(len(feed.bodies))
+        counts, companies = db.counts(), db.companies()
+        publish(queues, feed.bodies)
+        consumer.wait_for(2 * len(feed.bodies))
+
+    assert counts == (60, 80, 80)
+    assert db.counts() == counts
+    assert db.companies() == companies
+    assert set(consumer.statuses[len(feed.bodies) :]) == {Status.DUPLICATE}
+
+
+def test_out_of_order_updates_apply_newest(db: Database, queues: str) -> None:
+    v2, expected_v2 = company_version(7, 2)
+    v1, _ = company_version(7, 1)
+    consumer = _consumer(db, queues)
+    with running(consumer):
+        publish(queues, [v2, v1])
+        consumer.wait_for(2)
+
+    assert consumer.statuses == [Status.STORED, Status.STALE]
+    assert db.companies() == {"SYN-000007": expected_v2}
+
+
+def test_malformed_lands_in_dlq(db: Database, queues: str) -> None:
+    malformed = b'{"type": "company-upserted", "registrationNumber": '
+    valid, _ = company_version(1, 1)
+    consumer = _consumer(db, queues)
+    with running(consumer) as thread:
+        publish(queues, [malformed])
+        consumer.wait_for(1)
+        assert queue_depth(queues) == 0
+        assert thread.is_alive() and not consumer.stopping
+        publish(queues, [valid])
+        consumer.wait_for(2)
+
+    assert consumer.statuses == [Status.DEAD_LETTERED, Status.STORED]
+    [(properties, body)] = dead_letters(queues)
+    assert body == malformed
+    assert properties.message_id == message_id_of(malformed)
+    assert "error" in (properties.headers or {})
+    assert db.count("companies") == 1
+
+
+def test_missing_message_id_is_synthesized(db: Database, queues: str) -> None:
+    body, _ = company_version(3, 1)
+    consumer = _consumer(db, queues)
+    with running(consumer):
+        publish(queues, [body, body], with_message_id=False)
+        consumer.wait_for(2)
+
+    assert consumer.statuses == [Status.STORED, Status.DUPLICATE]
+    processed = db.fetchall("SELECT message_id FROM processed_messages")
+    assert processed == [(message_id_of(body),)]
+    assert db.count("companies") == 1
+
+
+def test_db_restart_recovery(db: Database, queues: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    bodies = [company_version(number, 1)[0] for number in range(30)]
+    publish(queues, bodies)
+
+    real_get_pool = database.get_pool
+    restarted: list[bool] = []
+
+    def restarting_database() -> Any:
+        if not restarted:
+            restarted.append(True)
+            raise psycopg.OperationalError("the database system is starting up")
+        return real_get_pool()
+
+    monkeypatch.setattr(database, "get_pool", restarting_database)
+    errors_before = _database_errors()
+    consumer = _consumer(db, queues)
+    with running(consumer):
+        consumer.wait_for(len(bodies))
+
+    assert consumer.requeued == 1
+    assert _database_errors() - errors_before == 1
+    assert consumer.statuses == [Status.STORED] * len(bodies)
+    assert db.counts() == (30, 30, 30)
+    assert queue_depth(queues) == 0
