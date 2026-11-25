@@ -40,9 +40,10 @@ test:
 test-chaos:
     uv run pytest -q -m chaos
 
+# Score recommendations against category match, write eval/results.md, fail if bge-small loses.
+eval:
+    uv run python -m company_recs.eval
+
 # To be used later
 lint:
-    @echo "not implemented"
-
-eval:
     @echo "not implemented"

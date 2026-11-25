@@ -17,7 +17,7 @@ recommended to each other. How each layer handles a missing category:
 | Consumer | A message without a category never clears one we already have: `category = COALESCE(EXCLUDED.category, companies.category)`. A new company with no category is stored with `category = NULL`. | Done (`feat/consumer`) |
 | Embedding | With no description, embed `name \| category \| state`; with no category either, `name \| state`. Never embed the text `"None"`. | Done (`feat/embedder`, `build_embed_text`) |
 | API | Return `"category": null` and let the portal decide how to show it. | Done (`feat/api`) |
-| Evaluation | Companies with no category are left out of the category-match ground truth, and the eval table reports `N` so the exclusion is visible. | Planned (`feat/eval`) |
+| Evaluation | A query with no category is left out (nothing could be relevant to it), and a neighbour with no category is never relevant. The eval reports how many queries were left out and `N`. | Done (`feat/eval`) |
 
 ### The feed, as it really arrives
 
@@ -105,7 +105,7 @@ On this laptop, against the 2,000-company table: the query itself runs in under 
 
 | Layer | What | Where |
 |---|---|---|
-| Unit | Parsing every feed quirk, config, embed text, API errors and probes. No Docker. | `test_models.py`, `test_config.py`, `test_embedder.py`, `test_api.py` |
+| Unit | Parsing every feed quirk, config, embed text, API errors and probes, eval metrics. No Docker. | `test_models.py`, `test_config.py`, `test_embedder.py`, `test_api.py`, `test_eval.py` |
 | Integration | The consumer's transaction, migrations, the similarity query and the HNSW index, against a real pgvector Postgres. | `test_consumer.py`, `test_db.py`, `test_api_similar.py` |
 | End to end | A synthetic 100-message feed through a real RabbitMQ, the consumer in a thread, Postgres and the API. | `test_e2e_feed.py`, `test_consumer_rabbitmq.py` |
 | Chaos (`-m chaos`) | The real feed in order, reversed and shuffled with redeliveries; and through RabbitMQ: the same feed twice, v2 before v1, a malformed message, no `message_id`, and the database failing with messages waiting. | `test_chaos.py` |
@@ -119,3 +119,34 @@ On this laptop, against the 2,000-company table: the query itself runs in under 
   neither ready nor done.
 - **The embedder is a fake** seeded from the text, so the suite runs in minutes and can count model calls. The
   real model has its own tests (`-m model`).
+
+## Evaluation
+
+`just eval` ([`src/company_recs/eval.py`](src/company_recs/eval.py)) scores recommendations against the only
+label the feed has: **a neighbour is relevant when it has the query's category**. The queries are the 1,855
+active companies with a description longer than 10 characters and a category; the candidates are the 1,992
+active companies the API recommends from. Results are in [`eval/results.md`](eval/results.md).
+
+| Retriever (k = 4) | P@4 | NDCG@4 | MRR | P@4, twins removed | NDCG@4, twins removed |
+|---|---:|---:|---:|---:|---:|
+| `random` | 0.088 | 0.089 | 0.174 | 0.083 | 0.082 |
+| `hashed-bow` | 0.945 | 0.940 | 0.955 | 0.334 | 0.339 |
+| `bge-small` | 0.952 | 0.950 | 0.971 | 0.509 | 0.513 |
+
+- **bge-small runs through the API's own `find_similar`**, so the eval measures what the portal gets: the same
+  SQL, the `is_active` filter, self-exclusion and the HNSW index (with iterative scan). The bag of words is
+  ranked exactly in NumPy; at 2,000 rows that is the honest baseline, not an approximation of one.
+- **The headline numbers are inflated by duplicate text.** The feed has only 174 distinct descriptions for
+  2,000 companies, and 1,651 queries have at least 4 companies with exactly the same description, so any text
+  retriever scores about 0.95 by returning those. That is why bge-small beats hashed-bow by only 0.01 NDCG@4
+  there, and why the guard (`bge-small NDCG@4 > hashed-bow NDCG@4`, else exit 1) has a thin margin.
+- **With exact-text twins removed** from each query's candidates, the eval measures generalisation: bge-small
+  keeps about half its precision, the bag of words a third. The model finds same-category companies whose
+  descriptions use different words, including across the feed's mix of English and Malay ("Oil palm
+  plantation…" / "Ladang kelapa sawit…"), which share no tokens at all.
+- **Within the labelled companies the label is consistent**: no description appears under two categories. The
+  98 queries with no category are left out, and a neighbour with no category counts as not relevant, even when
+  its description is word for word the query's (see SYN-000024 in the samples).
+- **Category match is a proxy.** A logistics company that serves restaurants may be a better recommendation
+  for a café than another café in a different state. Click-through or "contacted" events from the portal would
+  be the real ground truth.

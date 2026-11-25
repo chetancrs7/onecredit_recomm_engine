@@ -51,6 +51,19 @@ curl.exe -si http://127.0.0.1:8000/companies/SYN-999999/similar   # 404, applica
 - Each request logs one JSON line with `request_id`, `method`, `path`, `status` and `took_ms`; the same
   `request_id` comes back in the `X-Request-ID` header and in every error body.
 
+## Evaluation
+
+With the feed consumed (the API need not be running):
+
+```powershell
+just eval                       # about 20 seconds; writes eval/results.md
+```
+
+It prints P@4, NDCG@4 and MRR for `random`, `hashed-bow` and `bge-small`, twice: as asked, and with each
+query's exact-text twins removed. It exits 1 if bge-small's NDCG@4 is not above hashed-bow's, so a run against an
+empty or wrongly embedded table fails loudly. `--seed` changes the random baseline; `--output` writes elsewhere:
+`uv run python -m company_recs.eval --output eval/other.md`.
+
 To start again from empty: `just down`, then `just up`.
 
 ## Checks
@@ -60,6 +73,7 @@ uv run ruff check .
 uv run pyright
 just test                       # everything; Docker must be running (integration tests start their own Postgres and RabbitMQ, about 3 minutes)
 just test-chaos                 # only the chaos tests (about 2.5 minutes)
+just eval                       # recommendation quality on the loaded feed (needs the consumer run first)
 uv run pytest -q -m "not integration and not model"   # unit tests only, no Docker or model download
 ```
 
