@@ -10,9 +10,9 @@ from company_recs import db
 pytestmark = pytest.mark.integration
 
 
-def test_migrations_are_idempotent(database_url: str) -> None:
-    db.run_migrations(database_url)
-    assert db.run_migrations(database_url) == []
+def test_migrations_are_idempotent(db_url: str) -> None:
+    db.run_migrations(db_url)
+    assert db.run_migrations(db_url) == []
 
 
 def test_migrations_create_tables_and_indexes(migrated: str) -> None:
@@ -44,21 +44,21 @@ def test_migrations_create_tables_and_indexes(migrated: str) -> None:
     } <= set(applied)
 
 
-def test_new_migration_files_are_applied_once(database_url: str, tmp_path: Path) -> None:
+def test_new_migration_files_are_applied_once(db_url: str, tmp_path: Path) -> None:
     for source in db.MIGRATIONS_DIR.glob("*.sql"):
         (tmp_path / source.name).write_bytes(source.read_bytes())
     (tmp_path / "999_test.sql").write_text("CREATE TABLE IF NOT EXISTS migration_probe (x int);")
-    assert db.run_migrations(database_url, tmp_path) == ["999_test.sql"]
-    assert db.run_migrations(database_url, tmp_path) == []
+    assert db.run_migrations(db_url, tmp_path) == ["999_test.sql"]
+    assert db.run_migrations(db_url, tmp_path) == []
 
 
-def test_failed_migration_is_rolled_back(database_url: str, tmp_path: Path) -> None:
+def test_failed_migration_is_rolled_back(db_url: str, tmp_path: Path) -> None:
     (tmp_path / "998_broken.sql").write_text(
         "CREATE TABLE half_applied (x int); SELECT * FROM table_that_does_not_exist;"
     )
     with pytest.raises(Exception, match="table_that_does_not_exist"):
-        db.run_migrations(database_url, tmp_path)
-    with psycopg.connect(database_url) as c:
+        db.run_migrations(db_url, tmp_path)
+    with psycopg.connect(db_url) as c:
         assert c.execute("SELECT to_regclass('half_applied')").fetchone() == (None,)
         recorded = c.execute(
             "SELECT 1 FROM schema_migrations WHERE name = '998_broken.sql'"
