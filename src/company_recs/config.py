@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     top_k: int = Field(default=4, ge=1, le=50)
     log_level: LogLevel = "INFO"
     consumer_metrics_port: int = Field(default=9101, ge=1, le=65535)
+    api_host: str = "127.0.0.1"
+    api_port: int = Field(default=8000, ge=1, le=65535)
 
 
 @lru_cache(maxsize=1)

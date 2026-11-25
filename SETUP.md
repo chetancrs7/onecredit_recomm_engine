@@ -22,6 +22,7 @@ just up                         # start Postgres + RabbitMQ (Docker Desktop must
 just migrate                    # create the schema (safe to re-run)
 just publish                    # put the registry feed on the queue
 just consumer                   # consume it into Postgres; Ctrl+C to stop (also migrates)
+just api                        # in a second window: serve the API on http://127.0.0.1:8000
 ```
 
 The consumer logs one JSON line per message. The whole feed takes about 45 seconds; it is done when the
@@ -36,6 +37,20 @@ The consumer logs one JSON line per message. The whole feed takes about 45 secon
 - Postgres: `postgresql://postgres:postgres@127.0.0.1:5432/companies`
 - RabbitMQ UI: <http://localhost:15672> (`guest` / `guest`)
 
+With the consumer finished (or still running), try the API:
+
+```powershell
+curl.exe -s http://127.0.0.1:8000/companies/SYN-001550/similar
+curl.exe -s "http://127.0.0.1:8000/companies/SYN-001550/similar?limit=10"
+curl.exe -si http://127.0.0.1:8000/companies/SYN-999999/similar   # 404, application/problem+json
+```
+
+- Interactive docs: <http://127.0.0.1:8000/docs>.
+- Probes: `/healthz` (process is up), `/readyz` (Postgres answers; 503 otherwise).
+- Metrics: <http://127.0.0.1:8000/metrics> (`api_requests_total`, `api_request_seconds`).
+- Each request logs one JSON line with `request_id`, `method`, `path`, `status` and `took_ms`; the same
+  `request_id` comes back in the `X-Request-ID` header and in every error body.
+
 To start again from empty: `just down`, then `just up`.
 
 ## Checks
@@ -43,7 +58,7 @@ To start again from empty: `just down`, then `just up`.
 ```powershell
 uv run ruff check .
 uv run pyright
-uv run pytest -q                # Docker must be running: integration tests start their own Postgres and RabbitMQ (about 3 minutes)
+uv run pytest -q                # Docker must be running: integration tests start their own Postgres and RabbitMQ (about 2 minutes)
 uv run pytest -q -m "not integration and not model"   # unit tests only, no Docker or model download
 ```
 
@@ -56,9 +71,11 @@ Read from environment variables or `.env` (see `src/company_recs/config.py`):
 | `DATABASE_URL` | `postgresql://postgres:postgres@127.0.0.1:5432/companies` |
 | `RABBITMQ_URL` | `amqp://guest:guest@127.0.0.1:5672/` |
 | `EMBED_MODEL` | `BAAI/bge-small-en-v1.5` |
-| `TOP_K` | `4` |
+| `TOP_K` | `4` (the API's default `limit`) |
 | `LOG_LEVEL` | `INFO` |
 | `CONSUMER_METRICS_PORT` | `9101` |
+| `API_HOST` | `127.0.0.1` |
+| `API_PORT` | `8000` |
 
 If a port is taken, set `POSTGRES_PORT`, `RABBITMQ_PORT` or `RABBITMQ_UI_PORT` before `just up`, e.g.
 `$env:POSTGRES_PORT = "5433"`, and update `DATABASE_URL` / `RABBITMQ_URL` to match.

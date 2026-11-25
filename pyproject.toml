@@ -63,4 +63,5 @@ markers = [
 filterwarnings = [
   "ignore:BlockingConnection is deprecated:DeprecationWarning",
   "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning",
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]

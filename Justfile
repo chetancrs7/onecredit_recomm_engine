@@ -28,10 +28,11 @@ migrate:
 consumer:
     uv run python -m company_recs.consumer
 
-# To be used later
+# Serve the similar-companies API on :8000 until Ctrl+C (needs migrated, populated Postgres).
 api:
-    @echo "not implemented"
+    uv run python -m company_recs.api
 
+# To be used later
 test:
     @echo "not implemented"
 
