@@ -100,3 +100,22 @@ Every error is an RFC 7807 problem, `application/problem+json`, with the same `r
 
 On this laptop, against the 2,000-company table: the query itself runs in under 1 ms, `took_ms` is about 8 ms
 (including borrowing a pooled connection), and 198 of 200 requests finished end to end in under 10 ms.
+
+## Testing
+
+| Layer | What | Where |
+|---|---|---|
+| Unit | Parsing every feed quirk, config, embed text, API errors and probes. No Docker. | `test_models.py`, `test_config.py`, `test_embedder.py`, `test_api.py` |
+| Integration | The consumer's transaction, migrations, the similarity query and the HNSW index, against a real pgvector Postgres. | `test_consumer.py`, `test_db.py`, `test_api_similar.py` |
+| End to end | A synthetic 100-message feed through a real RabbitMQ, the consumer in a thread, Postgres and the API. | `test_e2e_feed.py`, `test_consumer_rabbitmq.py` |
+| Chaos (`-m chaos`) | The real feed in order, reversed and shuffled with redeliveries; and through RabbitMQ: the same feed twice, v2 before v1, a malformed message, no `message_id`, and the database failing with messages waiting. | `test_chaos.py` |
+
+- **One Postgres and one RabbitMQ container per test run** (session fixtures in `conftest.py`). Each test empties
+  the tables and purges both queues, so tests don't depend on each other's order.
+- **The synthetic feed's expected outcome is known exactly**: 60 companies, 80 distinct message ids,
+  75 stored, 5 stale, 20 duplicates. The real feed checks the quirks; the synthetic one checks the arithmetic.
+- **Tests wait on outcomes, not time.** `RecordingConsumer` records every delivery it finishes, and a test waits
+  until the expected number is reached. Queue depth alone isn't enough, because prefetched messages are
+  neither ready nor done.
+- **The embedder is a fake** seeded from the text, so the suite runs in minutes and can count model calls. The
+  real model has its own tests (`-m model`).
