@@ -57,8 +57,9 @@ venv = ".venv"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-  "integration: needs Docker (starts Postgres, and RabbitMQ for one test, with testcontainers)",
+  "integration: needs Docker (starts Postgres and RabbitMQ with testcontainers)",
   "model: loads the embedding model (downloaded on first run, about 70 MB)",
+  "chaos: fault injection (duplicates, reordering, poison messages, database outages); just test-chaos",
 ]
 filterwarnings = [
   "ignore:BlockingConnection is deprecated:DeprecationWarning",

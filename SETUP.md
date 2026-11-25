@@ -58,9 +58,13 @@ To start again from empty: `just down`, then `just up`.
 ```powershell
 uv run ruff check .
 uv run pyright
-uv run pytest -q                # Docker must be running: integration tests start their own Postgres and RabbitMQ (about 2 minutes)
+just test                       # everything; Docker must be running (integration tests start their own Postgres and RabbitMQ, about 3 minutes)
+just test-chaos                 # only the chaos tests (about 2.5 minutes)
 uv run pytest -q -m "not integration and not model"   # unit tests only, no Docker or model download
 ```
+
+The test containers are pinned to the same images as `docker-compose.yml` and are separate from the stack
+`just up` starts, so the tests never touch your local data.
 
 ## Settings
 
